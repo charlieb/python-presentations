@@ -110,7 +110,7 @@ foo == None
 "one " + "two"
 # >>> "one two"
 
-# Repeated Concatenatuion
+# Repeated Concatenation
 
 # Bad:
 cpd_lst = ["one", "two", "three", "four"]
@@ -235,7 +235,7 @@ dict1 = {"a":1, "b":2, "c":3}
 
 # >>> {'az': 2, 'cz': 4, 'bz': 3} 
 
-# Tuple: tuple syntax is a little different and the tuple is
+# Tuple: tuple syntax is a little different as the tuple is
 # converted to a list by the comprehension and then back again by us
 tpl = (1,2,3,4,5)
 tuple([t + 1 for t in tpl])
