@@ -35,8 +35,8 @@ print_stuff("this is my message")
 print_stuff("this is my message", suffix="END")
 # >>> Here goes: this is my message END
 
-# fill both of the optional arguments using keywords, in the wrong order
-print_stuff("this is my message", suffix="END", prefix="START")
+# fill all the arguments using keywords, in the wrong order
+print_stuff(suffix="END", prefix="START", message="this is my message")
 # >>> START this is my message END
 
 # fill one of the optional arguments positionally
@@ -115,6 +115,8 @@ print_args(*lst)
 print_args("one", "two", "three", "four", "five")
 # >>> one three four five two
 
+# Notice how we're filling the arguments positionally in this example
+
 # The same trick works with dictionaries and **
 dct = {"one":1, "two":2, "three":3}
 print_pairs(**dct)
@@ -136,6 +138,9 @@ def numbers(one=1, two=2, three=3):
 dct["three"] = 5
 numbers(**dct)
 # >>> 1 2 5
+
+# Again not super useful and pretty error prone. Use with care iff you really
+# have to.
 
 ## Nesting Functions and Scope
 
@@ -256,16 +261,20 @@ acc(3)
 # When it finds a matching name it will look at the object it finds and see if
 # it is a callable object.
 # A callable object is simply an object that implements the __call__ member.
-class fun:
-    def __init__(self): print "creating fun"
-    def __call__(self): print "Fun!"
+class Accumulator:
+    def __init__(self):
+        print "creating accumulator"
+        self.val = 0
+    def __call__(self, acc):
+        self.val += acc
+        return self.val
 
-f = fun()
-# >>> creating fun
-f()
-# >>> Fun!
-f.__call__()
-# >>> Fun!
+f = Accumulator()
+# >>> creating accumulator
+f(2)
+# >>> 2
+f.__call__(2)
+# >>> 4
 
 # Again, not really useful knowledge but interesting, I think.
 
@@ -283,17 +292,17 @@ from random import random
 sorted(lst, key=random)
 # >>> TypeError: random() takes no arguments (1 given)
 
-# Oops, well since I've forgotten about random.shuffle lets try to make this
-# work.
+# Oops, well since I've apparently forgotten about random.shuffle lets try to
+# make this work.
 def random_no_args(_): return random()
 
 sorted(lst, key=random_no_args)
 # >>> [1, -3, -2, 0, -1, 3, 2]
 
-# That's sort of a rubbish solution, it's just an expression. Why pollute the
-# scope with that?
-# What we need is a way to create an function that is unbound i.e. not using
-# def.
+# That's sort of a rubbish solution, it's just an expression. Why pollute our
+# global scope with that?
+# What we need is a way to create an function that is unbound, an anonymous
+# function i.e. not using def.
 sorted(lst, key=lambda _: random())
 # >>> [1, 3, -2, -3, 0, 2, -1]
 
@@ -311,3 +320,217 @@ python_group # list.sort is in-place and doesn't return anything
 python_group.sort(key=lambda python: python["fname"])
 python_group 
 # >>> [{'lname': 'Idle', 'fname': 'Eric'}, {'lname': 'Chapman', 'status': 'deceased', 'fname': 'Graham'}, {'lname': 'Clease', 'fname': 'John'}, {'lname': 'Palin', 'fname': 'Micheal'}, {'lname': 'Gilliam', 'fname': 'Terry'}, {'lname': 'Jones', 'fname': 'Terry'}]
+
+
+# In some other langauges lambda expressions are really powerful and function
+# definition is just a wrapper that binds a lambda expression to a name in the
+# scope.
+# (defun fn (arg1 (line1 arg) (line2 arg)) ==>
+# (setq 'fn (lambda (arg) (line1 arg) (line2 arg)))
+#
+# In python they can only be used to turn an expression into a function.
+# There's no such thing as a multi-line lambda. For that you have to use a
+# function just as in the random_no_args example.
+# Even limited as they are lambdas are really useful and generally the ability
+# to pass functions as arguments enables whole classes of programs that a
+# impossible express eleganly in languages that lack first class functions.
+
+## Decorators (finally!)
+
+# Decorators are just functions that take other functions are arguments and
+# return a replacement function. If python were a functional language this
+# wouldn't even have a name let alone a special syntax.
+# When a decorator is invoked the function being decorated is created but not
+# bound to a name. It is then passed to the decorating function and the result
+# of that function is bound to the original function's name.
+
+def fn_plus_one(fn):
+    return lambda: fn() + 1
+
+def one(): return 1
+one = fn_plus_one(one)
+
+one()
+# >>> 2
+
+# Which is perfectly equivalent to the python decorator syntactic sugar:
+
+@fn_plus_one
+def one(): return 1
+
+one()
+# >>> 2
+
+# The function returned by the decorator *must* be a drop in replacement for
+# the original function. That means it must have the same arguments and even
+# argument names.
+
+def pair_abs(fn):
+    def inner_pair_abs(a,b):
+        return (abs(a), abs(b))
+    return inner_pair_abs
+
+@pair_abs
+def double_pair(pair):
+    return (pair[0] * 2, pair[1] * 2)
+
+# This can result in some particularly difficult to debug error messages.
+
+double_pair((-1, -2))
+# >>> TypeError: inner_pair_abs() takes exactly 2 arguments (1 given)
+
+# What the hell in inner_pair_abs?! If you're just using a decorator from a
+# library and aren't familiar with the source code then this error will not
+# help you.
+# It makes perfect sense to python though because the name double_pair
+# was bound to the result of the decorator function which python correctly
+# names as inner_pair_abs
+
+# For specific uses decorators of this type can be a useful abstraction.
+# However where they actually shine is in comination with the *args and
+# **kwargs syntax.
+# The following is a classic example of a decorator:
+
+def logger(fn):
+    def inner_logger(*args, **kwargs):
+        print "%s(%s : %s)"%(fn.__name__, args, kwargs)
+        return fn(*args, **kwargs)
+    return inner_logger
+
+@logger
+def string_stuff(message, prefix="Here goes:", suffix="... and that's it"):
+    return prefix +  message + suffix
+
+string_stuff("my message", prefix="START", suffix="END")
+# >>>
+# string_stuff(('my message',) : {'prefix': 'START', 'suffix': 'END'})
+# 'STARTmy messageEND'
+
+# Note that now the way the function is called now has an impact on the
+# contents of the each argument.
+
+string_stuff("my_message", "S ", " E")
+# >>>
+# string_stuff(('my_message', 'S ', ' E') : {})
+# 'S my_message E'
+
+## Decorator Classes
+
+# When more complicated decoration is needed it is good to start to use
+# decorator classes instead of simple decorator functions.
+# Recall that a normal function is already a class with a __call__ method so
+# really you're already using decorator classes. Now we're just making it
+# explicit.
+
+class Logger:
+    def __init__(self, fn):
+        self.func = fn
+    def __call__(self, *args, **kwargs):
+        print "%s(%s : %s)"%(self.func.__name__, args, kwargs)
+        return self.func(*args, **kwargs)
+
+@Logger
+def string_stuff(message, prefix="Here goes:", suffix="... and that's it"):
+    return prefix +  message + suffix
+
+string_stuff("my message", prefix="START", suffix="END")
+# >>>
+# string_stuff(('my message',) : {'prefix': 'START', 'suffix': 'END'})
+# 'STARTmy messageEND'
+
+# Here we've replicated logger example above using a class.
+
+# This is interesting because it seperates the notion of decoration time and
+# runtime. The constructor is run at decoration time and __call__ is run at
+# runtime.
+# Decoration time happens when the code or bytecode is being read by python.
+# First the function is created, then it is passed to decorator object
+# constructor and that object is bound to the name of the original function.
+# At runtime the object's __call__ method is executed just like any other
+# function object's would be.
+
+## Decorators with Arguments
+
+# Sometimes it is useful to pass data into the decorator at decoration time.
+# This is the only way to change the internal state of the decorating object
+# before the decorated function is executed.
+# The confusing part of this is that passing arguments to the decorator changes
+# the semantics of what you're doing and different parts of the decorator get
+# executed at different times than they would be without arguments.
+
+from sys import stdout
+
+class Logger:
+    def __init__(self, file_handle):
+        self.file_handle = file_handle
+    def __call__(self, fn):
+        def inner_logger(*args, **kwargs):
+            self.file_handle.write("%s(%s : %s)\n"%(fn.__name__, args, kwargs))
+            return fn(*args, **kwargs)
+        return inner_logger
+
+@Logger(stdout)
+def string_stuff(message, prefix="Here goes:", suffix="... and that's it"):
+    return prefix +  message + suffix
+
+string_stuff("my message", prefix="START", suffix="END")
+# >>>
+# string_stuff(('my message',) : {'prefix': 'START', 'suffix': 'END'})
+# 'STARTmy messageEND'
+
+# What's happening is that the Logger instance is created using it's arguments.
+# Then that instance is __call__ed with the function as the argument and that
+# __call__ has to return the replacement function.
+
+# If you look at the syntax and think about what each part means I think you'll
+# see that it is remarkably consistent.
+
+# Considering that @ is just syntactic sugar:
+@Logger 
+def func(): pass
+# expands to:
+def func(): pass
+func = Logger(func)
+# so func is now bound to an instance that's created at decoration time.
+
+# As opposed to
+@Logger(stdout)
+def func(): pass
+# Which would expand to:
+def func(): pass
+func = Logger(stdout)(func)
+# Which we know is eqivalent to:
+func = Logger(stdout).__call__(func)
+# so func is bound to the result of __call__ from the instance that is created
+# with the argument
+
+## Summary
+
+# There are lots of different ways to pass arguments to functions. 
+# - Positional
+# - Keyword
+# - Default
+# - All of the above
+# The different ways you pass arguments result in different argument handling
+# - *args va **kwargs
+# - Hopefully you never have to notice this
+# Some ordering of different types of arguments are valid and others are not
+# - Invalid orderings are usually invalid because they are ambiguous
+# Python can destructure positional and keyword arguments for you
+# - using * before the argument iterator for positional
+# - and ** before the argument dictionary for keyword
+# - You can mix and match this destructuring but be careful
+# Functions are first class in python
+# - You can pass them like variables
+# - You can create them from an expression using lambda
+# Assigning to a variable in an outer scope creates a new binding
+# - You cannot alter the binding in the outer scope
+# - You can fake it if you have to using a data structure but don't
+# - Use a class instead if you have trouble like this
+
+# Decorators are just functions that take other functions as arguments
+# - They're really nothing special in a language with first class functions
+# - It does expose some functional programming goodies we can exploit
+# - @ is just syntactic sugar for a function application and a rebinding
+# - Keep that in mind and you should be able to reason effectively about how
+# decorators will execute.
